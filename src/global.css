@@ -1,0 +1,60 @@
+@import "tailwindcss";
+@import "uniwind";
+
+@layer theme {
+  :root {
+    --font-display:
+      Spline Sans, Inter, ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji,
+      Segoe UI Symbol, Noto Color Emoji;
+    --font-mono:
+      ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
+    --font-rounded: "SF Pro Rounded", "Hiragino Maru Gothic ProN", Meiryo, "MS PGothic", sans-serif;
+    --font-serif: Georgia, "Times New Roman", serif;
+
+    @variant light {
+      --color-primary: #2563eb;
+      --color-primary-foreground: #ffffff;
+      --color-card: #ffffff;
+      --color-card-foreground: #0b0e14;
+      --color-secondary: #f1f5f9;
+      --color-secondary-foreground: #0f172a;
+      --color-background: #f8fafc;
+      --color-popover: #ffffff;
+      --color-popover-foreground: #0b0e14;
+      --color-muted: #f1f5f9;
+      --color-muted-foreground: #64748b;
+      --color-destructive: #dc2626;
+      --color-foreground: #0b0e14;
+      --color-border: #e2e8f0;
+      --color-input: #e2e8f0;
+      --color-ring: #93c5fd;
+      --color-accent: #eff6ff;
+      --color-accent-foreground: #1e40af;
+      --color-success: #059669;
+      --color-warning: #d97706;
+    }
+
+    @variant dark {
+      --color-primary: #3b82f6;
+      --color-primary-foreground: #ffffff;
+      --color-card: #161b22;
+      --color-card-foreground: #f8fafc;
+      --color-secondary: #21262d;
+      --color-secondary-foreground: #f8fafc;
+      --color-background: #0b0e14;
+      --color-popover: #161b22;
+      --color-popover-foreground: #f8fafc;
+      --color-muted: #21262d;
+      --color-muted-foreground: #94a3b8;
+      --color-destructive: #f87171;
+      --color-foreground: #f8fafc;
+      --color-border: #30363d;
+      --color-input: #30363d;
+      --color-ring: #3b82f6;
+      --color-accent: #1e293b;
+      --color-accent-foreground: #e2e8f0;
+      --color-success: #34d399;
+      --color-warning: #fbbf24;
+    }
+  }
+}

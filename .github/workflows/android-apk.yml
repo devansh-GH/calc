@@ -1,0 +1,135 @@
+name: Android APK (arm64-v8a)
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Typecheck + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # setup-bun only caches the Bun binary itself, not packages.
+      # Caching Bun's global package store (~/.bun/install/cache) makes
+      # `bun install` reuse downloaded tarballs instead of refetching them.
+      - name: Cache Bun packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-install-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bunx tsc --noEmit
+
+      - name: Engine tests
+        run: bun test
+
+  build:
+    name: Build arm64-v8a APK
+    runs-on: ubuntu-latest
+    needs: validate
+    env:
+      # arm64-v8a only — keeps the APK small and focused.
+      GRADLE_ARCHS: arm64-v8a
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # The SDK download (cmdline-tools + platform + build-tools) is one of
+      # the slowest steps. Bump the version suffix in the key whenever the
+      # cmdline-tools URL or sdkmanager packages below change.
+      - name: Cache Android SDK
+        id: cache-android-sdk
+        uses: actions/cache@v4
+        with:
+          path: ~/android-sdk
+          key: android-sdk-${{ runner.os }}-cmdtools-11076708-platform-36-buildtools-36.0.0
+
+      # Env/PATH exports must run on every build, hit or miss.
+      - name: Export Android SDK env
+        run: |
+          echo "ANDROID_HOME=$HOME/android-sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$HOME/android-sdk" >> "$GITHUB_ENV"
+          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$HOME/android-sdk/platform-tools" >> "$GITHUB_PATH"
+
+      - name: Install Android SDK packages
+        if: steps.cache-android-sdk.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          curl -sL -o /tmp/cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q /tmp/cmdtools.zip -d "$HOME/android-sdk/cmdline-tools"
+          mv "$HOME/android-sdk/cmdline-tools/cmdline-tools" "$HOME/android-sdk/cmdline-tools/latest"
+          export PATH="$HOME/android-sdk/cmdline-tools/latest/bin:$PATH"
+          yes | sdkmanager --licenses > /dev/null
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Cache Bun packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-install-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Generate native project
+        run: bunx expo prebuild --platform android --no-install
+
+      # Official Gradle action: restores downloaded dependencies, wrapper
+      # dists, transforms and compiled scripts, and handles cache cleanup.
+      # `basic` = fully open-source (MIT) provider, same key strategy as
+      # setup-java's gradle cache. Must run AFTER prebuild — the cache key
+      # is hashed from the generated android/**/*.gradle* files. Do NOT add
+      # a manual actions/cache step for ~/.gradle alongside this (the two
+      # mechanisms interfere with each other).
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      - name: Build release APK (arm64-v8a)
+        working-directory: android
+        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=${{ env.GRADLE_ARCHS }} --no-daemon
+
+      - name: Verify single ABI
+        run: |
+          APK=$(ls android/app/build/outputs/apk/release/*.apk | head -n 1)
+          echo "APK=$APK"
+          unzip -l "$APK" | grep -E "lib/.*/libhermes.so" || true
+          if unzip -l "$APK" | grep -q "lib/x86\|lib/armeabi-v7a\|lib/x86_64"; then
+            echo "ERROR: APK contains non-arm64 native libs"; exit 1
+          fi
+          ls -lh "$APK"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: smartcalc-arm64-v8a
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error

@@ -1,0 +1,50 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "import", "oxc"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "rules": {
+    // Disallow unused variables — catches dead code
+    "no-unused-vars": "warn",
+    // Warn on console.log/debug, allow warn/error
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    // Avoid `any` leaking into the codebase
+    "typescript/no-explicit-any": "warn",
+    // React Hooks correctness (required for Expo + React Compiler)
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "warn",
+    // --- Turned off for basic setup (too strict / noisy) ---
+    // New JSX transform: React import not needed
+    "react/react-in-jsx-scope": "off",
+    // React Compiler rules: legit RN patterns (Reanimated, Animated.Value) trip these
+    "react/refs": "off",
+    "react/set-state-in-effect": "off",
+    "react/immutability": "off",
+    "react/preserve-manual-memoization": "off",
+    // Side-effect CSS import (global.css) is required by Uniwind/NativeWind
+    "import/no-unassigned-import": "off"
+  },
+  "settings": {
+    "react": {
+      "version": "19.2"
+    }
+  },
+  "overrides": [
+    {
+      "files": ["scripts/**/*.js"],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "node_modules/**",
+    ".expo/**",
+    "dist/**",
+    "web-build/**",
+    "ios/**",
+    "android/**"
+  ]
+}
