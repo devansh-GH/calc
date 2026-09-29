@@ -1,8 +1,21 @@
-name: Android APK (arm64-v8a)
+name: Android APK (arm64-v8a) + Web
 
 on:
   push:
   workflow_dispatch:
+
+# GitHub Pages deployment needs these; the APK jobs only need `contents: read`,
+# which is implied, so a workflow-wide grant is safe here.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deployment may run at a time, and queued ones get cancelled
+# so a newer push always wins over a slower older build.
+concurrency:
+  group: pages
+  cancel-in-progress: true
 
 jobs:
   validate:
@@ -133,3 +146,104 @@ jobs:
           name: smartcalc-arm64-v8a
           path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+
+  web:
+    name: Build + deploy web to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: validate
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Expo's CLI requires Node >= 20.19.4; 22 is the current LTS.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-install-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-install-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # A project Pages site is served from https://<user>.github.io/<repo>/,
+      # so every asset URL must be prefixed. Expo's `experiments.baseUrl` is the
+      # supported way to do this — it rewrites the URLs baked into index.html
+      # and the Metro bundle (router base path, image/font sources) at build
+      # time. Without it, `_expo/static/...` 404s under /<repo>/.
+      #
+      # A repo named <user>.github.io is served from the root, so skip the
+      # prefix in that case. Injected via env rather than committed to app.json
+      # so local `expo start` keeps working on http://localhost:8081/.
+      - name: Set Pages base path
+        run: |
+          REPO="${GITHUB_REPOSITORY#*/}"
+          case "$REPO" in
+            *.github.io)
+              # A user/org site is served from https://<user>.github.io/ with no
+              # path prefix. Note this matches the repo *name* ending in
+              # .github.io — comparing against "$REPO.github.io" would never
+              # match, since the repo name already carries the suffix.
+              echo "User/org Pages site — using root base path"
+              echo "EXPO_BASE_URL=" >> "$GITHUB_ENV"
+              ;;
+            *)
+              echo "Project Pages site — using /$REPO as base path"
+              echo "EXPO_BASE_URL=/$REPO" >> "$GITHUB_ENV"
+              ;;
+          esac
+
+      - name: Apply base path to Expo config
+        run: |
+          node -e '
+            const fs = require("fs");
+            const file = "app.json";
+            const config = JSON.parse(fs.readFileSync(file, "utf8"));
+            config.expo.experiments ??= {};
+            config.expo.experiments.baseUrl = process.env.EXPO_BASE_URL || undefined;
+            fs.writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
+          '
+
+      # `expo export --platform web` runs Metro once and emits a static
+      # index.html + hashed bundles into dist/. No prebuild needed: the web
+      # target is served entirely from the JS bundle.
+      - name: Export web build
+        run: bunx expo export --platform web
+
+      # GitHub Pages has no server-side rewrite rules, so any route that is not
+      # a real file on disk (e.g. /about on a hard refresh or a shared link)
+      # would 404. Expo Router's web output is a single-page app, so copying
+      # index.html to 404.html makes Pages serve the app shell for those paths
+      # and lets the client-side router take over.
+      #
+      # Skipped for a user/org Pages site: there 404.html would shadow a real
+      # GitHub Pages 404 page for the whole domain.
+      - name: Add SPA fallback
+        if: env.EXPO_BASE_URL != ''
+        run: cp dist/index.html dist/404.html
+
+      # Serves dist/ from the domain root instead of a /<repo>/ subpath. The
+      # export already uses absolute /<repo>/_expo/... URLs, which keeps working.
+      - name: Configure Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
