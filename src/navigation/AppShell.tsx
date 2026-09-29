@@ -3,7 +3,7 @@ import { usePathname, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Modal, Platform, Pressable } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Box } from "@/components/ui/box";
 import { Text } from "@/components/ui/text";
 import { useTap } from "../components/ui";
@@ -17,6 +17,14 @@ export const NAV_ITEMS = [
 
 const ICON_MUTED = "#94a3b8";
 const ICON_PRIMARY = "#3b82f6";
+
+// The drawer is rendered inside a full-screen <Modal>, which sits outside the
+// <SafeAreaView> that insets the top bar. So the drawer has to re-apply the
+// top/bottom safe-area insets itself, otherwise its header is drawn in the
+// notch/status-bar strip and collides with the top bar behind it.
+const DRAWER_WIDTH = 288;
+const DRAWER_PAD = 16;
+const DRAWER_CLOSED_X = -320;
 
 function Logo() {
   return (
@@ -128,8 +136,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { statusBarStyle } = useTheme();
+  const insets = useSafeAreaInsets();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const slide = useRef(new Animated.Value(-320)).current;
+  const slide = useRef(new Animated.Value(DRAWER_CLOSED_X)).current;
 
   const navigate = useCallback(
     (path: string) => {
@@ -141,7 +150,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     Animated.timing(slide, {
-      toValue: drawerOpen ? 0 : -320,
+      toValue: drawerOpen ? 0 : DRAWER_CLOSED_X,
       duration: drawerOpen ? 220 : 180,
       // Native driver isn't available on react-native-web.
       useNativeDriver: Platform.OS !== "web",
@@ -198,8 +207,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Box className="flex-1 flex-row bg-background/0">
           <Box className="flex-1 flex-row bg-black/55">
             <Animated.View
-              style={[{ width: 288, height: "100%", transform: [{ translateX: slide }] }]}
-              className="bg-card p-4 dark:bg-card"
+              style={[
+                { width: DRAWER_WIDTH, height: "100%", transform: [{ translateX: slide }] },
+                {
+                  paddingTop: insets.top + DRAWER_PAD,
+                  paddingRight: DRAWER_PAD,
+                  paddingBottom: insets.bottom + DRAWER_PAD,
+                  paddingLeft: DRAWER_PAD,
+                },
+              ]}
+              className="bg-card dark:bg-card"
             >
               <Logo />
               <Box className="mt-6 flex-1">
